@@ -10,15 +10,13 @@ contract IndieOnCrowdSale {
 
   // Address where funds are collected
   address public wallet;
-
-  // How many token units a buyer gets per wei.
-  // The rate is the conversion between wei and the smallest and indivisible token unit.
-  // So, if you are using a rate of 1 with a DetailedERC20 token with 3 decimals called TOK
-  // 1 wei will give you 1 unit, or 0.001 TOK.
   uint256 public rate;
   uint256 public openingTime;
   uint256 public closingTime;
   uint256 public weiRaised;
+  
+  uint256 public  FirstWeekEnd;
+  uint256 public  SecoundWeekStart;
 
   event TokenPurchase(
     address indexed purchaser,
@@ -30,24 +28,21 @@ contract IndieOnCrowdSale {
   /**
    * @param _rate Number of token units a buyer gets per wei
    * @param _wallet Address where collected funds will be forwarded to
-   * @param _token Address of the token being sold
    */
-  constructor(uint256 _rate, address _wallet, IndieToken _token, uint _openingTime, uint _closingTime)
+  constructor(uint256 _rate, address _wallet, uint _openingTime, uint _closingTime)
    public
    {
     require(_rate > 0);
     require(_wallet != address(0));
-    require(_token != address(0));
 
     rate = _rate;
     wallet = _wallet;
-    token = _token;
+    token = new IndieToken();
     openingTime = _openingTime;
     closingTime = _closingTime;
   }
 
   modifier onlyWhileOpen {
-    // solium-disable-next-line security/no-block-members
     require(block.timestamp >= openingTime && block.timestamp <= closingTime);
     _;
   }
@@ -73,23 +68,19 @@ contract IndieOnCrowdSale {
     _preValidatePurchase(_beneficiary, weiAmount);
 
     // calculate token amount to be created
-    uint256 tokens = _getTokenAmount(weiAmount);
-
+    uint256 tokens = getTokenAmount(weiAmount);
     // update state
     weiRaised = weiRaised.add(weiAmount);
 
     _processPurchase(_beneficiary, tokens);
-    emit TokenPurchase(
-      msg.sender,
-      _beneficiary,
-      weiAmount,
-      tokens
-    );
-
-    _updatePurchasingState(_beneficiary, weiAmount);
+        emit TokenPurchase(
+        msg.sender,
+       _beneficiary,
+        weiAmount,
+        tokens
+     );
 
     _forwardFunds();
-    _postValidatePurchase(_beneficiary, weiAmount);
   }
 
   function _preValidatePurchase(
@@ -101,20 +92,6 @@ contract IndieOnCrowdSale {
   {
     require(_beneficiary != address(0));
     require(_weiAmount != 0);
-  }
-
-  /**
-   * @dev Validation of an executed purchase. Observe state and use revert statements to undo rollback when valid conditions are not met.
-   * @param _beneficiary Address performing the token purchase
-   * @param _weiAmount Value in wei involved in the purchase
-   */
-  function _postValidatePurchase(
-    address _beneficiary,
-    uint256 _weiAmount
-  )
-    internal
-  {
-    // optional override
   }
 
   /**
@@ -145,29 +122,28 @@ contract IndieOnCrowdSale {
     _deliverTokens(_beneficiary, _tokenAmount);
   }
 
-  /**
-   * @dev Override for extensions that require an internal state to check for validity (current user contributions, etc.)
-   * @param _beneficiary Address receiving the tokens
-   * @param _weiAmount Value in wei involved in the purchase
+  /**@dev Calculate the discount based on the current phase of sale.
+   * @return Percentage of discount
    */
-  function _updatePurchasingState(
-    address _beneficiary,
-    uint256 _weiAmount
-  )
-    internal
-  {
-    // optional override
-  }
-
+    function getDiscount() onlyWhileOpen internal returns (uint256) {
+        if (now < FirstWeekEnd) // we are in first week
+        return 160;
+        else if (now > FirstWeekEnd && now < SecoundWeekStart) // in secound week
+        return 130;
+        else
+        return 110;  //in third OR forth week
+    }
+    
   /**
    * @dev Override to extend the way in which ether is converted to tokens.
    * @param _weiAmount Value in wei to be converted into tokens
    * @return Number of tokens that can be purchased with the specified _weiAmount
    */
-  function _getTokenAmount(uint256 _weiAmount)
+  function getTokenAmount(uint256 _weiAmount)
     internal view returns (uint256)
   {
-    return _weiAmount.mul(rate);
+    uint discount = getDiscount();
+    return _weiAmount.div(100).mul(discount);
   }
 
   /**
